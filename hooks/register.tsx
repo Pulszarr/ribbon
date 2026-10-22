@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderInput } from 'claude-code'
 
 import type { CacheFacts, Fold, Window } from '../types'
 import {
@@ -23,6 +23,7 @@ const LOW_AT = 15
 const TIGHT_CELLS = 6
 /** How often the band redraws, so the countdown and the warm-to-cold flip stay current. */
 const TICK_MS = 30_000
+const PANE = 'ribbon'
 
 const windows = atom({ plugin: 'ribbon', key: 'windows' } as const, [] as Window[])
 const cache = atom({ plugin: 'ribbon', key: 'cache' } as const, null as CacheFacts | null)
@@ -85,10 +86,32 @@ const measure = async ($: EngineInterface, lastAt: number | null, model: string 
   }))
 }
 
+/** The band's facts as one line of text, for chats no surface draws in. */
+export const summary = (list: readonly Window[], view: CacheView | null, now: number): string => {
+  const parts = list.map(w => {
+    const left = Math.max(0, Math.round((100 - w.percentUsed) * 10) / 10)
+    const reset = fmtReset(w.resetsAt, now)
+    return `${NAMES[w.kind] ?? w.kind.toUpperCase()} ${left}% left${left < LOW_AT ? ' (LOW)' : ''}${reset ? ` · resets ${reset}` : ''}`
+  })
+  if (parts.length === 0) parts.push('Usage: no reading yet')
+  if (view) {
+    const mine = mineModel(view)
+    const cost = mine ? ` · next message ${usd(costOf(mine, view.mode, view.tokens))}` : ''
+    parts.push(view.mode === 'cold'
+      ? `Cache COLD, idle ${view.idle}${cost}`
+      : `Cache WARM, ${Math.max(0, TTL_MIN - view.idleMin)}m left${cost}`)
+  } else {
+    parts.push('Cache: shows after the first reply')
+  }
+  return parts.join('  |  ')
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await pull($)
     $.clock.every(TICK_MS, () => $.ui.invalidate('ui.render'))
+    await $.command.register({ name: 'ribbon', description: 'Show usage left and the prompt cache in a pane' })
+    void $.ui.open({ id: PANE, title: 'Ribbon' })
     return next(e)
   })
 
@@ -140,9 +163,24 @@ export const register: Register = on => {
     return r
   })
 
+  // Cloud chats in the app raise no AbovePrompt, so the same drawing also fills a pane;
+  // where no surface draws at all, /ribbon answers with the same facts as text.
+  on('command.run', { command: 'ribbon' }, async $ => {
+    const opened = await $.ui.open({ id: PANE, title: 'Ribbon' })
+    if (opened.isPlaced) return { text: 'Ribbon pane opened.' }
+    await pull($)
+    return { text: summary(await read($, windows), viewOf(await read($, cache), await $.clock.now()), await $.clock.now()) }
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, ($, e) => draw($, e))
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
+    return draw($, e)
+  })
+}
 
+const draw = async ($: EngineInterface, e: RenderInput<'AbovePrompt' | 'Pane'>) => {
     const ui = $.ui.resolve(e)
     const { Box, Button, Text } = ui
     // Svg draws on desktop, mobile and VS Code; the terminal gets the text form.
@@ -335,5 +373,4 @@ export const register: Register = on => {
         {card}
       </Box>
     )
-  })
 }

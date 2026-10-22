@@ -1,6 +1,9 @@
 {
-  "name": "robonuggets",
-  "owner": { "name": "Jay E", "url": "https://robonuggets.com" },
+  "name": "pulszarr",
+  "owner": {
+    "name": "Jay E",
+    "url": "https://robonuggets.com"
+  },
   "plugins": [
     {
       "name": "ribbon",

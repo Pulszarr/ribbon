@@ -85,6 +85,7 @@ The card shows how long you've been idle, how many tokens are in the cache, and 
 - **It costs nothing to run.** It reads the app's own numbers and draws them. It never calls a model.
 - **Prices are estimates.** They come from a price table in `hooks/cache-art.ts` (`MODELS`), not from your bill. If prices change, edit that table.
 - **Subagents don't count.** Only your main chat resets the cache clock.
+- **Cloud chats in the Claude app.** There the app attaches nothing that draws, so no band or pane shows. Type `/ribbon` and it answers with the same facts as one line of text.
 
 ## What is inside
 
